@@ -25,7 +25,7 @@
 ## Шаги
 
 ```bash
-git clone <repo> partna-bridge
+git clone https://github.com/partna-dev/partna-bridge.git
 cd partna-bridge
 ./scripts/install.sh
 ```
