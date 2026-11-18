@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     cookie_days: int = 30
     cookie_name: str = "pn_ref"
     timeout_seconds: float = 10.0
+    outbox_db: str = "/data/bridge.sqlite3"
+    outbox_mode: str = "queue"
+    poll_seconds: float = 5.0
 
     @property
     def origins(self) -> list[str]:

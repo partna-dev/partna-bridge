@@ -11,7 +11,9 @@ COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
 
-RUN useradd --create-home --uid 10001 bridge
+RUN useradd --create-home --uid 10001 bridge \
+    && mkdir -p /data \
+    && chown bridge:bridge /data
 USER bridge
 
 EXPOSE 8020

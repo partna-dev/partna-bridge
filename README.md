@@ -11,11 +11,10 @@
 ## Запуск
 
 ```bash
-cp .env.example .env
-# вписать BRIDGE_ENGINE_API_KEY, BRIDGE_BRIDGE_TOKEN, BRIDGE_WEBHOOK_SECRET
-docker compose up -d
-curl -s http://localhost:8020/health
+./scripts/install.sh
 ```
+
+Скрипт создаст `.env`, выпустит секреты, соберёт контейнер, дождётся `/health` и напишет, что осталось. Подробности и проверки — в `INSTALL.md`; для агентов — `AGENTS.md`.
 
 Если ключ не задан, `/health` вернёт `key_configured: false`, а защищённые методы ответят 503. Это ожидаемо.
 
@@ -46,6 +45,16 @@ curl -s http://localhost:8020/health
 | `POST /webhooks/engine` | ядро | приём события с `X-Partner-Signature` |
 
 Заказ и возврат доступны только с `Authorization: Bearer <BRIDGE_BRIDGE_TOKEN>`. Фронтенд их не вызывает: иначе любой желающий сможет начислить комиссию.
+
+## Очередь
+
+`BRIDGE_OUTBOX_MODE=queue` (по умолчанию): заказ и возврат пишутся в SQLite и отвечают 202, воркер досылает с backoff. `inline` отправляет сразу и возвращает ошибку, если ядро недоступно.
+
+| Метод | Что делает |
+|---|---|
+| `GET /v1/outbox` | очередь: статус, попытки, ошибка |
+| `POST /v1/outbox/{id}/retry` | повторить вручную |
+| `GET /v1/inbox` | принятые вебхуки, дедуп по `eventId` |
 
 ## Границы
 

@@ -3,19 +3,26 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from partna_bridge.app import create_app
 from partna_bridge.config import Settings
+from partna_bridge.engine import EngineError
+from partna_bridge.outbox import OutboxWorker
 
 
 class FakeEngine:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.fail = False
 
     async def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if self.fail:
+            raise EngineError(502, "engine is unreachable")
         self.calls.append((path, payload))
         return {"ok": True, "path": path, "duplicate": False}
 
@@ -23,38 +30,41 @@ class FakeEngine:
         return {"ok": True}
 
 
-def make_client(**overrides: Any) -> tuple[TestClient, FakeEngine]:
-    settings = Settings(
-        engine_url="https://engine.example",
-        engine_api_key="secret-key",
-        public_url="https://bridge.example",
-        brand="ИИ Продавец",
-        destination_url="https://shop.example/",
-        bridge_token="bridge-token",
-        webhook_secret="hook-secret",
-        allowed_origins="",
-        **overrides,
-    )
+@contextmanager
+def bridge(tmp_path, **overrides: Any) -> Iterator[tuple[TestClient, FakeEngine, Any]]:
+    values = {
+        "engine_url": "https://engine.example",
+        "engine_api_key": "secret-key",
+        "public_url": "https://bridge.example",
+        "brand": "ИИ Продавец",
+        "destination_url": "https://shop.example/",
+        "bridge_token": "bridge-token",
+        "webhook_secret": "hook-secret",
+        "allowed_origins": "",
+        "outbox_db": str(tmp_path / "bridge.sqlite3"),
+        "outbox_mode": "inline",
+    }
+    values.update(overrides)
+    settings = Settings(**values)
     app = create_app(settings)
-    engine = FakeEngine()
-    app.state.engine = engine
-    return TestClient(app), engine
+    with TestClient(app) as client:
+        engine = FakeEngine()
+        app.state.engine = engine
+        yield client, engine, app
 
 
-def test_health_never_echoes_the_key() -> None:
-    client, _ = make_client()
-
-    response = client.get("/health")
+def test_health_never_echoes_the_key(tmp_path) -> None:
+    with bridge(tmp_path) as (client, _, _):
+        response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json()["key_configured"] is True
     assert "secret-key" not in response.text
 
 
-def test_redirect_sets_cookie_and_adds_ref() -> None:
-    client, _ = make_client()
-
-    response = client.get("/r/iron1", follow_redirects=False)
+def test_redirect_sets_cookie_and_adds_ref(tmp_path) -> None:
+    with bridge(tmp_path) as (client, _, _):
+        response = client.get("/r/iron1", follow_redirects=False)
 
     assert response.status_code == 302
     assert response.headers["location"] == "https://shop.example/?ref=IRON1"
@@ -64,78 +74,128 @@ def test_redirect_sets_cookie_and_adds_ref() -> None:
     assert "Max-Age=2592000" in cookie
 
 
-def test_redirect_rejects_bad_code() -> None:
-    client, _ = make_client()
-
-    response = client.get("/r/ab", follow_redirects=False)
+def test_redirect_rejects_bad_code(tmp_path) -> None:
+    with bridge(tmp_path) as (client, _, _):
+        response = client.get("/r/ab", follow_redirects=False)
 
     assert response.status_code == 400
 
 
-def test_claim_uses_cookie_when_body_has_no_code() -> None:
-    client, engine = make_client()
-    client.cookies.set("pn_ref", "IRON1")
-
-    response = client.post("/v1/claim", json={"externalAccountId": "user-42"})
+def test_claim_uses_cookie_when_body_has_no_code(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, _):
+        client.cookies.set("pn_ref", "IRON1")
+        response = client.post("/v1/claim", json={"externalAccountId": "user-42"})
 
     assert response.status_code == 200
     assert engine.calls[0][0] == "/v1/referrals/claim"
     assert engine.calls[0][1]["code"] == "IRON1"
 
 
-def test_claim_without_code_is_rejected() -> None:
-    client, engine = make_client()
-
-    response = client.post("/v1/claim", json={"externalAccountId": "user-42"})
+def test_claim_without_code_is_rejected(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, _):
+        response = client.post("/v1/claim", json={"externalAccountId": "user-42"})
 
     assert response.status_code == 400
     assert engine.calls == []
 
 
-def test_order_requires_bridge_token() -> None:
-    client, engine = make_client()
+def test_claim_falls_back_to_outbox_when_engine_is_down(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, app):
+        engine.fail = True
+        response = client.post(
+            "/v1/claim",
+            json={"code": "IRON1", "externalAccountId": "user-42"},
+        )
+        queued = _run(app.state.store.list_outbox())
 
-    response = client.post("/v1/order", json={"orderId": "1"})
+    assert response.status_code == 202
+    assert response.json()["status"] == "pending"
+    assert queued[0]["path"] == "/v1/referrals/claim"
+
+
+def test_order_requires_bridge_token(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, _):
+        response = client.post("/v1/order", json={"eventId": "order:1"})
 
     assert response.status_code == 401
     assert engine.calls == []
 
 
-def test_order_forwards_payload_with_token() -> None:
-    client, engine = make_client()
-
-    response = client.post(
-        "/v1/order",
-        json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
-        headers={"Authorization": "Bearer bridge-token"},
-    )
+def test_order_forwards_payload_inline(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, _):
+        response = client.post(
+            "/v1/order",
+            json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
+            headers={"Authorization": "Bearer bridge-token"},
+        )
 
     assert response.status_code == 200
-    assert engine.calls[0][0] == "/v1/orders"
-    assert engine.calls[0][1]["amount"] == 5_000_000
+    assert response.json()["queued"] is False
+    payload = {"eventId": "order:1", "orderId": "1", "amount": 5_000_000}
+    assert engine.calls[0] == ("/v1/orders", payload)
 
 
-def test_webhook_rejects_bad_signature() -> None:
-    client, _ = make_client()
+def test_order_is_queued_in_queue_mode(tmp_path) -> None:
+    with bridge(tmp_path, outbox_mode="queue") as (client, engine, app):
+        response = client.post(
+            "/v1/order",
+            json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
+            headers={"Authorization": "Bearer bridge-token"},
+        )
+        assert response.status_code == 202
+        assert engine.calls == []
 
-    response = client.post(
-        "/webhooks/engine",
-        content=b'{"eventId":"e1"}',
-        headers={"X-Partner-Signature": "sha256=deadbeef"},
-    )
+        worker = OutboxWorker(app.state.store, engine)
+        sent = _run(worker.run_once())
+        rows = _run(app.state.store.list_outbox())
+
+    assert sent == 1
+    assert rows[0]["status"] == "sent"
+
+
+def test_outbox_keeps_failed_entry_for_retry(tmp_path) -> None:
+    with bridge(tmp_path, outbox_mode="queue") as (client, engine, app):
+        engine.fail = True
+        client.post(
+            "/v1/order",
+            json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
+            headers={"Authorization": "Bearer bridge-token"},
+        )
+        worker = OutboxWorker(app.state.store, engine)
+        _run(worker.run_once())
+        rows = _run(app.state.store.list_outbox())
+
+    assert rows[0]["status"] == "pending"
+    assert rows[0]["attempts"] == 1
+    assert "unreachable" in rows[0]["last_error"]
+
+
+def test_webhook_rejects_bad_signature(tmp_path) -> None:
+    with bridge(tmp_path) as (client, _, _):
+        response = client.post(
+            "/webhooks/engine",
+            content=b'{"eventId":"e1"}',
+            headers={"X-Partner-Signature": "sha256=deadbeef"},
+        )
 
     assert response.status_code == 401
 
 
-def test_webhook_accepts_signature_and_reports_duplicate() -> None:
-    client, _ = make_client()
+def test_webhook_accepts_signature_and_reports_duplicate(tmp_path) -> None:
     body = json.dumps({"eventId": "e1", "type": "referral.claimed"}).encode()
     signature = hmac.new(b"hook-secret", body, hashlib.sha256).hexdigest()
     headers = {"X-Partner-Signature": f"sha256={signature}", "Content-Type": "application/json"}
 
-    first = client.post("/webhooks/engine", content=body, headers=headers)
-    second = client.post("/webhooks/engine", content=body, headers=headers)
+    with bridge(tmp_path) as (client, _, _):
+        first = client.post("/webhooks/engine", content=body, headers=headers)
+        second = client.post("/webhooks/engine", content=body, headers=headers)
 
     assert first.status_code == 200
     assert first.json() == {"received": True, "duplicate": False}
     assert second.json() == {"received": True, "duplicate": True}
+
+
+def _run(coro):
+    import asyncio
+
+    return asyncio.run(coro)

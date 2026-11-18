@@ -6,3 +6,8 @@ services:
     env_file: .env
     ports:
       - "8020:8020"
+    volumes:
+      - bridge-data:/data
+
+volumes:
+  bridge-data:
