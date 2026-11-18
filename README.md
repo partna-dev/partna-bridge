@@ -117,6 +117,12 @@ The tests cover the parts that actually break in production: the key never appea
 cookie is set and survives, an order without the bearer token is refused, a webhook with a bad
 signature is dropped, and a repeated event is marked as such.
 
+## Read more
+
+- [Why your frontend should not talk to your partner API](https://dev.to/partna/your-frontend-should-not-talk-to-your-partner-api-402o) — the
+  three failure modes this service removes, with the reasoning behind each decision.
+- Notes while building: [t.me/partnadev](https://t.me/partnadev).
+
 ## License
 
 MIT. Русская версия — [README.ru.md](README.ru.md).
