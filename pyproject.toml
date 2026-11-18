@@ -1,7 +1,7 @@
 [project]
 name = "partna-bridge"
 version = "0.1.0"
-description = "Мост между сайтом клиента и расчётным ядром партнёрской программы"
+description = "Self-hosted bridge between a client site and a partner-program engine"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
