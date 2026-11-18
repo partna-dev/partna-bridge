@@ -1,0 +1,8 @@
+services:
+  bridge:
+    build: .
+    image: partna-bridge:local
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8020:8020"
