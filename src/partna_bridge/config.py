@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRIDGE_", extra="ignore")
 
-    engine_url: str = "https://partners.partnr.icu"
+    engine_url: str = "https://networks.partna.dev"
     engine_api_key: str = ""
     public_url: str = "http://localhost:8020"
     brand: str = "Партнёрская программа"
