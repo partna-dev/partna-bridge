@@ -101,6 +101,8 @@ retries with backoff. `inline` sends immediately and fails loudly when the engin
 ## Boundaries
 
 - No money is held and no payouts are made here.
+- No payment provider integration: the host's own webhook handler posts the order. Request examples
+  are in [INSTALL.md](INSTALL.md), section «Подключение к вебхуку платёжки».
 - The processed `eventId` list lives in memory: after a restart a repeated event passes again, so the
   host should still deduplicate on its side.
 - Not a billing system, not an analytics platform, not a CDN.
