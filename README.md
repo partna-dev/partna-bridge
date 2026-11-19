@@ -7,6 +7,8 @@ receives signed webhooks.
 [![ci](https://github.com/partna-dev/partna-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/partna-dev/partna-bridge/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+Обзор, установка и глоссарий — в документации: https://partna.dev/docs/
+
 ## Contract
 
 The five write operations — `claim`, `member`, `order`, `refund`, `partner-link` —
