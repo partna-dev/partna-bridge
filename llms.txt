@@ -35,6 +35,15 @@ Map of all levels and the "what to choose" table: [docs/integrations/README.md](
 - Agent instructions for installation: [AGENTS.md](AGENTS.md).
 - Checks against a live bridge: `./scripts/smoke.sh --level 1 --url https://bridge.example`.
 
+## Partner access
+
+Partners do not sign up. The platform gives them a link `/p/<token>`: thirty days, reusable,
+and it slides — every visit issues a fresh token, so an active partner never hits the term.
+A one-time fifteen-minute entry exists for opening the cabinet on the owner's device.
+
+If an owner wants no links at all, the partner uses the owner's own account and the owner's
+backend reads the dashboard from the engine (level 4). The bridge does not proxy reads.
+
 ## Facts the engine expects
 
 `amount` is always in minor units (350000 with `RUB` is 3 500 ₽). `eventId` must be stable across
