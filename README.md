@@ -1,5 +1,7 @@
 # partna-bridge
 
+[Русский](README.ru.md)
+
 Small self-hosted service that sits between a customer's website and the partner-program engine:
 it keeps the tenant key on the server, holds the partner binding in an `HttpOnly` cookie, and
 receives signed webhooks.

@@ -13,5 +13,16 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --group dev
       - run: uv run ruff check src tests scripts
+      - name: documentation stays in sync
+        run: |
+          for pair in "README.md README.ru.md" "spec/README.md spec/README.ru.md"; do
+            set -- $pair
+            en=$(grep -c '^#' "$1")
+            ru=$(grep -c '^#' "$2")
+            if [ "$en" -ne "$ru" ]; then
+              echo "$1 and $2 have different section counts: $en vs $ru"
+              exit 1
+            fi
+          done
       - run: uv run python scripts/export_spec.py --check
       - run: uv run pytest -q
