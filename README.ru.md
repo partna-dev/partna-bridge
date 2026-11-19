@@ -62,6 +62,19 @@ flowchart LR
 
 Заказ и возврат доступны только с `Authorization: Bearer <BRIDGE_BRIDGE_TOKEN>`. Фронтенд их не вызывает: иначе любой желающий сможет начислить комиссию.
 
+## Уровни интеграции
+
+Берите наименьший уровень, который закрывает задачу. Повышать можно позже, не переделывая предыдущий.
+
+| Уровень | Что делает владелец | Файл |
+|---|---|---|
+| 1 — готовая ссылка | заводит партнёра в кабинете, отправляет ссылку | [level-1-link.md](docs/integrations/level-1-link.md) |
+| 2 — своя регистрация | привязывает клиента из бэкенда, показывает ссылку у себя | [level-2-signup.md](docs/integrations/level-2-signup.md) |
+| 3 — свой граф | присылает участников из своей CRM | [level-3-own-graph.md](docs/integrations/level-3-own-graph.md) |
+| 4 — свои экраны | показывает баланс и выплаты у себя | [level-4-own-screens.md](docs/integrations/level-4-own-screens.md) |
+
+Справка по полям — [docs/integrations/fields.md](docs/integrations/fields.md). Машиночитаемый контракт — `/openapi.json` работающего моста. Проверка уровня — `./scripts/smoke.sh --level 2 --url … --token … --code … --user …`.
+
 ## Очередь
 
 `BRIDGE_OUTBOX_MODE=queue` (по умолчанию): заказ и возврат пишутся в SQLite и отвечают 202, воркер досылает с backoff. `inline` отправляет сразу и возвращает ошибку, если ядро недоступно.

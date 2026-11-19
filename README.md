@@ -78,6 +78,21 @@ Until an engine key is set, `/health` reports `key_configured: false` and protec
 `order` and `refund` require `Authorization: Bearer <BRIDGE_BRIDGE_TOKEN>`. The frontend must never
 call them: otherwise anyone could award themselves a commission.
 
+## Integration levels
+
+Pick the smallest level that closes the task; raising it later does not require undoing the previous one.
+
+| Level | Owner does | Where |
+|---|---|---|
+| 1 — ready link | creates a partner in the cabinet, sends a link | [level-1-link.md](docs/integrations/level-1-link.md) |
+| 2 — own signup | claims the member from its backend, shows the link in its cabinet | [level-2-signup.md](docs/integrations/level-2-signup.md) |
+| 3 — own graph | sends `member` facts from its own CRM | [level-3-own-graph.md](docs/integrations/level-3-own-graph.md) |
+| 4 — own screens | shows balance and payouts inside its cabinet | [level-4-own-screens.md](docs/integrations/level-4-own-screens.md) |
+
+Field reference: [docs/integrations/fields.md](docs/integrations/fields.md). Machine-readable contract:
+`/openapi.json` of a running bridge. Check a level against a live bridge with
+`./scripts/smoke.sh --level 2 --url https://bridge.example --token … --code … --user …`.
+
 ## Delivery queue
 
 `BRIDGE_OUTBOX_MODE=queue` (default) writes orders and refunds to SQLite and answers `202`; a worker

@@ -113,9 +113,20 @@ def test_claim_falls_back_to_outbox_when_engine_is_down(tmp_path) -> None:
     assert queued[0]["path"] == "/v1/referrals/claim"
 
 
+ORDER = {
+    "eventId": "order:1",
+    "occurredAt": "2026-11-19T12:00:00Z",
+    "orderId": "1",
+    "memberId": "user-42",
+    "amount": 5_000_000,
+    "currency": "RUB",
+    "personalVolume": 0,
+}
+
+
 def test_order_requires_bridge_token(tmp_path) -> None:
     with bridge(tmp_path) as (client, engine, _):
-        response = client.post("/v1/order", json={"eventId": "order:1"})
+        response = client.post("/v1/order", json=ORDER)
 
     assert response.status_code == 401
     assert engine.calls == []
@@ -125,21 +136,38 @@ def test_order_forwards_payload_inline(tmp_path) -> None:
     with bridge(tmp_path) as (client, engine, _):
         response = client.post(
             "/v1/order",
-            json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
+            json=ORDER,
             headers={"Authorization": "Bearer bridge-token"},
         )
 
     assert response.status_code == 200
     assert response.json()["queued"] is False
-    payload = {"eventId": "order:1", "orderId": "1", "amount": 5_000_000}
-    assert engine.calls[0] == ("/v1/orders", payload)
+    path, payload = engine.calls[0]
+    assert path == "/v1/orders"
+    assert payload["eventId"] == "order:1"
+    assert payload["memberId"] == "user-42"
+    assert payload["amount"] == 5_000_000
+
+
+def test_order_without_member_is_rejected_before_the_engine(tmp_path) -> None:
+    payload = {key: value for key, value in ORDER.items() if key != "memberId"}
+
+    with bridge(tmp_path) as (client, engine, _):
+        response = client.post(
+            "/v1/order",
+            json=payload,
+            headers={"Authorization": "Bearer bridge-token"},
+        )
+
+    assert response.status_code == 422
+    assert engine.calls == []
 
 
 def test_order_is_queued_in_queue_mode(tmp_path) -> None:
     with bridge(tmp_path, outbox_mode="queue") as (client, engine, app):
         response = client.post(
             "/v1/order",
-            json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
+            json=ORDER,
             headers={"Authorization": "Bearer bridge-token"},
         )
         assert response.status_code == 202
@@ -158,7 +186,7 @@ def test_outbox_keeps_failed_entry_for_retry(tmp_path) -> None:
         engine.fail = True
         client.post(
             "/v1/order",
-            json={"eventId": "order:1", "orderId": "1", "amount": 5_000_000},
+            json=ORDER,
             headers={"Authorization": "Bearer bridge-token"},
         )
         worker = OutboxWorker(app.state.store, engine)
@@ -193,6 +221,68 @@ def test_webhook_accepts_signature_and_reports_duplicate(tmp_path) -> None:
     assert first.status_code == 200
     assert first.json() == {"received": True, "duplicate": False}
     assert second.json() == {"received": True, "duplicate": True}
+
+
+MEMBER = {
+    "eventId": "member:user-42:iron",
+    "occurredAt": "2026-11-19T12:00:00Z",
+    "memberId": "user-42",
+    "sponsorId": "iron",
+    "placementId": "iron",
+}
+
+
+def test_member_is_forwarded_to_the_engine(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, _):
+        response = client.post(
+            "/v1/member",
+            json=MEMBER,
+            headers={"Authorization": "Bearer bridge-token"},
+        )
+
+    assert response.status_code == 200
+    path, payload = engine.calls[0]
+    assert path == "/v1/members"
+    assert payload["sponsorId"] == "iron"
+
+
+def test_member_requires_the_bridge_token(tmp_path) -> None:
+    with bridge(tmp_path) as (client, engine, _):
+        response = client.post("/v1/member", json=MEMBER)
+
+    assert response.status_code == 401
+    assert engine.calls == []
+
+
+def test_server_claim_is_not_rate_limited(tmp_path) -> None:
+    headers = {"Authorization": "Bearer bridge-token"}
+
+    with bridge(tmp_path) as (client, engine, _):
+        responses = [
+            client.post(
+                "/v1/claim",
+                json={"code": "IRON1", "externalAccountId": f"user-{index}"},
+                headers=headers,
+            )
+            for index in range(40)
+        ]
+
+    assert {response.status_code for response in responses} == {200}
+    assert len(engine.calls) == 40
+
+
+def test_browser_claim_is_rate_limited(tmp_path) -> None:
+    with bridge(tmp_path) as (client, _, _):
+        responses = [
+            client.post(
+                "/v1/claim",
+                json={"code": "IRON1", "externalAccountId": f"user-{index}"},
+            )
+            for index in range(40)
+        ]
+
+    assert responses[29].status_code == 200
+    assert responses[30].status_code == 429
 
 
 def _run(coro):

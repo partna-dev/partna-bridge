@@ -1,0 +1,45 @@
+# partna-bridge
+
+> Self-hosted bridge between a client site and a partner-program engine. Holds the tenant key on the
+> server, keeps the partner binding in an HttpOnly cookie, queues orders and refunds, receives signed
+> webhooks.
+
+## What this service does and does not do
+
+- Does: attribution of visitors to partners, reporting facts (`order`, `refund`, `member`), issuing
+  partner links, signature-checked webhooks, a local delivery queue.
+- Does not: hold money, make payouts, calculate commissions, know payment providers, store personal
+  data. The engine calculates; the host owns contracts, KYC, taxes and transfers.
+
+## Integration levels
+
+Read one file, in this order of growth. Each level is independent; higher levels do not replace the
+lower ones.
+
+- [Level 1 — ready link](docs/integrations/level-1-link.md): the owner creates a partner in the
+  cabinet and sends a link. No code on the owner side.
+- [Level 2 — own signup](docs/integrations/level-2-signup.md): the owner's backend claims the member
+  after its own registration and issues the partner link from its own UI.
+- [Level 3 — own graph](docs/integrations/level-3-own-graph.md): the owner's CRM is the source of
+  truth and sends `member` facts with a sponsor.
+- [Level 4 — own screens](docs/integrations/level-4-own-screens.md): the owner shows balances and
+  payouts inside its own cabinet.
+
+Map of all levels and the "what to choose" table: [docs/integrations/README.md](docs/integrations/README.md).
+
+## Contracts
+
+- OpenAPI: `/openapi.json` of a running bridge (typed bodies for `order`, `refund`, `member`).
+- Field reference and mistakes that cost money: [docs/integrations/fields.md](docs/integrations/fields.md).
+- Installation: [INSTALL.md](INSTALL.md).
+- Agent instructions for installation: [AGENTS.md](AGENTS.md).
+- Checks against a live bridge: `./scripts/smoke.sh --level 1 --url https://bridge.example`.
+
+## Facts the engine expects
+
+`amount` is always in minor units (350000 with `RUB` is 3 500 ₽). `eventId` must be stable across
+retries: the queue drops duplicates by it and the engine deduplicates by it too.
+
+## License
+
+MIT.

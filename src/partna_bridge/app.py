@@ -9,25 +9,22 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from .config import Settings, get_settings
 from .engine import EngineClient, EngineError
 from .outbox import OutboxWorker
+from .schemas import (
+    ClaimRequest,
+    MemberFact,
+    OrderFact,
+    PartnerLinkRequest,
+    RefundFact,
+)
 from .security import RateLimiter, verify_signature
 from .storage import Store
 
 CODE_RE = re.compile(r"^[A-Z0-9]{4,16}$")
-
-
-class ClaimRequest(BaseModel):
-    code: str = ""
-    external_account_id: str = Field(alias="externalAccountId", min_length=1)
-
-
-class PartnerLinkRequest(BaseModel):
-    external_account_id: str = Field(alias="externalAccountId", min_length=1)
-    destination_url: str | None = Field(default=None, alias="destinationUrl")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -101,9 +98,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return redirect
 
     @app.post("/v1/claim")
-    async def claim(request: Request, payload: ClaimRequest) -> JSONResponse:
+    async def claim(
+        request: Request,
+        payload: ClaimRequest,
+        authorization: str = Header(default=""),
+    ) -> JSONResponse:
         client_ip = request.client.host if request.client else "unknown"
-        if not app.state.claims.allow(client_ip):
+        server_call = _token_matches(authorization, config)
+        if not server_call and not app.state.claims.allow(client_ip):
             raise HTTPException(status_code=429, detail="too many claims")
 
         code = (payload.code or request.cookies.get(config.cookie_name) or "").strip().upper()
@@ -130,12 +132,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await app.state.engine.post("/v1/referral-links", body)
 
     @app.post("/v1/order", dependencies=[Depends(_require_token(config))])
-    async def order(payload: dict[str, Any]) -> JSONResponse:
-        return await _fact(app, config, payload, "/v1/orders", "order")
+    async def order(payload: OrderFact) -> JSONResponse:
+        return await _fact(app, config, payload, "/v1/orders")
 
     @app.post("/v1/refund", dependencies=[Depends(_require_token(config))])
-    async def refund(payload: dict[str, Any]) -> JSONResponse:
-        return await _fact(app, config, payload, "/v1/refunds", "refund")
+    async def refund(payload: RefundFact) -> JSONResponse:
+        return await _fact(app, config, payload, "/v1/refunds")
+
+    @app.post("/v1/member", dependencies=[Depends(_require_token(config))])
+    async def member(payload: MemberFact) -> JSONResponse:
+        return await _fact(app, config, payload, "/v1/members")
 
     @app.post("/webhooks/engine")
     async def engine_webhook(
@@ -175,27 +181,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 async def _fact(
     app: FastAPI,
     config: Settings,
-    payload: dict[str, Any],
+    payload: BaseModel,
     path: str,
-    kind: str,
 ) -> JSONResponse:
-    event_id = str(payload.get("eventId") or "")
-    if not event_id:
-        raise HTTPException(status_code=422, detail="eventId is required")
+    body = payload.model_dump(by_alias=True, mode="json", exclude_none=True)
+    event_id = str(body["eventId"])
 
     if config.outbox_mode == "queue":
-        await app.state.store.enqueue(event_id, path, payload)
+        await app.state.store.enqueue(event_id, path, body)
         return JSONResponse({"queued": True, "eventId": event_id}, status_code=202)
 
-    result = await app.state.engine.post(path, payload)
+    result = await app.state.engine.post(path, body)
     return JSONResponse({"queued": False, "engine": result, "eventId": event_id}, status_code=200)
+
+
+def _token_matches(authorization: str, config: Settings) -> bool:
+    if not config.bridge_token:
+        return False
+    return authorization == f"Bearer {config.bridge_token}"
 
 
 def _require_token(config: Settings):
     async def dependency(authorization: str = Header(default="")) -> None:
         if not config.bridge_token:
             raise HTTPException(status_code=503, detail="bridge token is not configured")
-        if authorization != f"Bearer {config.bridge_token}":
+        if not _token_matches(authorization, config):
             raise HTTPException(status_code=401, detail="unauthorized")
 
     return dependency

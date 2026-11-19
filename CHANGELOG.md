@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- `POST /v1/member`: the owner's own graph, the host reports who invited whom.
+- Typed request bodies for `order`, `refund` and `member`: `/openapi.json` is now a contract an agent
+  can read, instead of a free-form object.
+- Server-side `claim`: a call with the bearer token is not limited by the browser rate limit, so a
+  backend can claim every signup.
+- Integration levels 1–4 in `docs/integrations/`, `llms.txt` for agents, `skills/integrate-partna-bridge`.
+- `scripts/smoke.sh` walks a level against a live bridge and prints what passed.
+
 ## 0.1.0
 
 First public version.
