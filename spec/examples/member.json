@@ -1,0 +1,7 @@
+{
+  "eventId": "member:user-42",
+  "occurredAt": "2026-11-01T10:00:00Z",
+  "memberId": "user-42",
+  "sponsorId": "user-7",
+  "status": "active"
+}

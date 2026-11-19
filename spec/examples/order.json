@@ -1,0 +1,10 @@
+{
+  "eventId": "order:order-1",
+  "occurredAt": "2026-11-01T10:05:00Z",
+  "orderId": "order-1",
+  "memberId": "user-42",
+  "amount": 500000,
+  "currency": "RUB",
+  "personalVolume": 5000,
+  "productId": "p_month"
+}

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .config import Settings, get_settings
+from .contract import ClaimResponse, FactResponse, LinkResponse
 from .engine import EngineClient, EngineError
 from .outbox import OutboxWorker
 from .schemas import (
@@ -97,7 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return redirect
 
-    @app.post("/v1/claim")
+    @app.post("/v1/claim", response_model=ClaimResponse)
     async def claim(
         request: Request,
         payload: ClaimRequest,
@@ -123,7 +124,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"status": "pending", "eventId": event_id}, status_code=202)
         return JSONResponse(result, status_code=200)
 
-    @app.post("/v1/partner-link", dependencies=[Depends(_require_token(config))])
+    @app.post(
+        "/v1/partner-link",
+        response_model=LinkResponse,
+        dependencies=[Depends(_require_token(config))],
+    )
     async def partner_link(payload: PartnerLinkRequest) -> dict[str, Any]:
         body: dict[str, Any] = {
             "externalAccountId": payload.external_account_id,
@@ -131,15 +136,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         return await app.state.engine.post("/v1/referral-links", body)
 
-    @app.post("/v1/order", dependencies=[Depends(_require_token(config))])
+    @app.post(
+        "/v1/order",
+        response_model=FactResponse,
+        dependencies=[Depends(_require_token(config))],
+    )
     async def order(payload: OrderFact) -> JSONResponse:
         return await _fact(app, config, payload, "/v1/orders")
 
-    @app.post("/v1/refund", dependencies=[Depends(_require_token(config))])
+    @app.post(
+        "/v1/refund",
+        response_model=FactResponse,
+        dependencies=[Depends(_require_token(config))],
+    )
     async def refund(payload: RefundFact) -> JSONResponse:
         return await _fact(app, config, payload, "/v1/refunds")
 
-    @app.post("/v1/member", dependencies=[Depends(_require_token(config))])
+    @app.post(
+        "/v1/member",
+        response_model=FactResponse,
+        dependencies=[Depends(_require_token(config))],
+    )
     async def member(payload: MemberFact) -> JSONResponse:
         return await _fact(app, config, payload, "/v1/members")
 

@@ -7,6 +7,13 @@ receives signed webhooks.
 [![ci](https://github.com/partna-dev/partna-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/partna-dev/partna-bridge/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+## Contract
+
+The five write operations — `claim`, `member`, `order`, `refund`, `partner-link` —
+are described in [`spec/partna-facts.v1.json`](spec/partna-facts.v1.json)
+(OpenAPI 3.1); rules and examples are in [`spec/README.md`](spec/README.md). The
+schema is generated from the handlers, so it cannot drift from the code.
+
 ## Why a bridge
 
 An integration usually starts with the frontend calling the partner API directly. That works until

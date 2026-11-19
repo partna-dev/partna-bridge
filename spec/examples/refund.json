@@ -1,0 +1,9 @@
+{
+  "eventId": "refund:refund-1",
+  "occurredAt": "2026-11-02T09:00:00Z",
+  "refundId": "refund-1",
+  "orderId": "order-1",
+  "memberId": "user-42",
+  "amount": 500000,
+  "currency": "RUB"
+}
